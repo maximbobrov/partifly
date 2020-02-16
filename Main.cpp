@@ -67,20 +67,12 @@ double* z;
 double*** u;
 double*** v;
 double*** w;
-double*** T;
+double*** uPrev;
+double*** vPrev;
+double*** wPrev;
+int readFileNum = 0;
 
-double*** Wx;
-double*** Wy;
-double*** Wz;
-
-
-double*** um;
-double*** vm;
-double*** wm;
-
-double*** tilt;
-double*** str;
-double*** adv;
+std::vector <char*>  fileNames;
 
 bool created=false;
 
@@ -414,17 +406,17 @@ void fmm_step(double dt)
 
     if (counter>10)
     {
-    for( i=0; i<numParticles; i++ )
-    {
-        x_save[i][save_num]=bodyPos[i].x;
-        y_save[i][save_num]=bodyPos[i].y;
-        z_save[i][save_num]=bodyPos[i].z;
-        u_save[i][save_num]=bodyVel[i].x;
-        v_save[i][save_num]=bodyVel[i].y;
-        w_save[i][save_num]=bodyVel[i].z;
-    }
-    save_num++;
-    counter=0;
+        for( i=0; i<numParticles; i++ )
+        {
+            x_save[i][save_num]=bodyPos[i].x;
+            y_save[i][save_num]=bodyPos[i].y;
+            z_save[i][save_num]=bodyPos[i].z;
+            u_save[i][save_num]=bodyVel[i].x;
+            v_save[i][save_num]=bodyVel[i].y;
+            w_save[i][save_num]=bodyVel[i].z;
+        }
+        save_num++;
+        counter=0;
     }
     for( i=0; i<numParticles; i++ )
     {
@@ -657,15 +649,18 @@ void init()
 
 }*/
 
+
 void loadVTK(char *name)
 {
+
+
+    printf("LOAD VTK %s\n",name);
     if(!created)
     {
         reader = vtkStructuredGridReader::New();
         //structured_grid = vtkStructuredGrid::New();
     }
 
-    vtkDataArray *Temp;
     vtkDataArray *vel;
 
     reader->ReadAllScalarsOn();
@@ -673,7 +668,6 @@ void loadVTK(char *name)
     reader->SetFileName(name);
 
     reader->Update();
-    Temp=reader->GetOutput()->GetPointData()->GetArray("Temperature");
     vel=reader->GetOutput()->GetPointData()->GetArray("Velocity");
     structured_grid =reader->GetOutput();
     dims = structured_grid->GetDimensions();
@@ -691,80 +685,35 @@ void loadVTK(char *name)
         u=new double **[dims[0]];
         v=new double **[dims[0]];
         w=new double **[dims[0]];
-
-
-        um=new double **[dims[0]];
-        vm=new double **[dims[0]];
-        wm=new double **[dims[0]];
-
-        T=new double **[dims[0]];
-
-        Wx=new double **[dims[0]];
-        Wy=new double **[dims[0]];
-        Wz=new double **[dims[0]];
-
-        tilt=new double **[dims[0]];
-        str=new double **[dims[0]];
-        adv=new double **[dims[0]];
+        uPrev=new double **[dims[0]];
+        vPrev=new double **[dims[0]];
+        wPrev=new double **[dims[0]];
 
         for (int i=0;i<dims[0];i++)
         {
             u[i]=new double *[dims[1]];
             v[i]=new double *[dims[1]];
             w[i]=new double *[dims[1]];
-
-            um[i]=new double *[dims[1]];
-            vm[i]=new double *[dims[1]];
-            wm[i]=new double *[dims[1]];
-            T[i]=new double *[dims[1]];
-
-            Wx[i]=new double *[dims[1]];
-            Wy[i]=new double *[dims[1]];
-            Wz[i]=new double *[dims[1]];
-
-
-            tilt[i]=new double *[dims[1]];
-            str[i]=new double *[dims[1]];
-            adv[i]=new double *[dims[1]];
+            uPrev[i]=new double *[dims[1]];
+            vPrev[i]=new double *[dims[1]];
+            wPrev[i]=new double *[dims[1]];
 
             for (int j=0;j<dims[1];j++)
             {
                 u[i][j]=new double [dims[2]];
                 v[i][j]=new double [dims[2]];
                 w[i][j]=new double [dims[2]];
-
-                um[i][j]=new double [dims[2]];
-                vm[i][j]=new double [dims[2]];
-                wm[i][j]=new double [dims[2]];
-
-                T[i][j]=new double [dims[2]];
-
-                Wx[i][j]=new double [dims[2]];
-                Wy[i][j]=new double [dims[2]];
-                Wz[i][j]=new double [dims[2]];
-
-                tilt[i][j]=new double [dims[2]];
-                str[i][j]=new double [dims[2]];
-                adv[i][j]=new double [dims[2]];
-
+                uPrev[i][j]=new double [dims[2]];
+                vPrev[i][j]=new double [dims[2]];
+                wPrev[i][j]=new double [dims[2]];
                 for (int k=0;k<dims[2];k++)
                 {
                     u[i][j][k]=0.0;
                     v[i][j][k]=0.0;
                     w[i][j][k]=0.0;
-                    um[i][j][k]=0.0;
-                    vm[i][j][k]=0.0;
-                    wm[i][j][k]=0.0;
-
-                    T[i][j][k]=0.0;
-
-                    Wx[i][j][k]=0.0;
-                    Wy[i][j][k]=0.0;
-                    Wz[i][j][k]=0.0;
-
-                    tilt[i][j][k]=0.0;
-                    str[i][j][k]=0.0;
-                    adv[i][j][k]=0.0;
+                    uPrev[i][j][k]=0.0;
+                    vPrev[i][j][k]=0.0;
+                    wPrev[i][j][k]=0.0;
                 }
             }
         }
@@ -802,77 +751,29 @@ void loadVTK(char *name)
                 u[i][j][k]=vel->GetComponent(ijk, 0);
                 v[i][j][k]=vel->GetComponent(ijk, 1);
                 w[i][j][k]=vel->GetComponent(ijk, 2);
-                Temp->GetTuple(ijk, &tmp);
-                T[i][j][k]+=tmp;
-
-                um[i][j][k]+=u[i][j][k];//(w[i][j+1][k]-w[i][j-1][k])/(y[j+1]-y[j-1])-(v[i][j][k+1]-v[i][j][k-1])/(z[k+1]-z[k-1]);
-                vm[i][j][k]+=v[i][j][k];//(u[i][j][k+1]-u[i][j][k-1])/(z[k+1]-z[k-1])-(w[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1]);
-                wm[i][j][k]+=w[i][j][k];//(v[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1])-(u[i][j+1][k]-u[i][j-1][k])/(y[j+1]-y[j-1]);
             }
         }
     }
-
-    // structured_grid->Delete();
-    // reader->Delete();
 }
 
-void calcNewFields()
+
+void stepGrid()
 {
-    for (int k = 1; k < dims[2]-1; k++)
+    for (int i=0;i<dims[0];i++)
     {
-        for (int j = 1; j < dims[1]-1; j++)
+        for (int j=0;j<dims[1];j++)
         {
-            for (int i = 1; i < dims[0]-1; i++)
+            for (int k=0;k<dims[2];k++)
             {
-                um[i][j][k]+=u[i][j][k];//(w[i][j+1][k]-w[i][j-1][k])/(y[j+1]-y[j-1])-(v[i][j][k+1]-v[i][j][k-1])/(z[k+1]-z[k-1]);
-                vm[i][j][k]+=v[i][j][k];//(u[i][j][k+1]-u[i][j][k-1])/(z[k+1]-z[k-1])-(w[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1]);
-                wm[i][j][k]+=w[i][j][k];//(v[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1])-(u[i][j+1][k]-u[i][j-1][k])/(y[j+1]-y[j-1]);
+                uPrev[i][j][k]=u[i][j][k];
+                vPrev[i][j][k]=v[i][j][k];
+                wPrev[i][j][k]=w[i][j][k];
             }
         }
     }
-
+    loadVTK(fileNames[readFileNum]);
+    readFileNum++;
 }
-
-
-void calcOmega_gen()
-{
-    for (int k = 1; k < dims[2]-1; k++)
-    {
-        for (int j = 1; j < dims[1]-1; j++)
-        {
-            for (int i = 1; i < dims[0]-1; i++)
-            {
-                Wx[i][j][k]=(w[i][j+1][k]-w[i][j-1][k])/(y[j+1]-y[j-1])-(v[i][j][k+1]-v[i][j][k-1])/(z[k+1]-z[k-1]);
-                Wy[i][j][k]=(u[i][j][k+1]-u[i][j][k-1])/(z[k+1]-z[k-1])-(w[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1]);
-                Wz[i][j][k]=(v[i+1][j][k]-v[i-1][j][k])/(x[i+1]-x[i-1])-(u[i][j+1][k]-u[i][j-1][k])/(y[j+1]-y[j-1]);
-            }
-        }
-    }
-
-    for (int k = 1; k < dims[2]-1; k++)
-    {
-        for (int j = 1; j < dims[1]-1; j++)
-        {
-            for (int i = 1; i < dims[0]-1; i++)
-            {
-                double wx_duzdx=Wx[i][j][k]*(w[i+1][j][k]-w[i-1][j][k])/(x[i+1]-x[i-1]);
-                double wy_duzdy=Wy[i][j][k]*(w[i][j+1][k]-w[i][j+1][k])/(y[j+1]-y[j-1]);
-                double wz_duzdz=Wz[i][j][k]*(w[i][j][k+1]-w[i][j][k-1])/(z[k+1]-z[k-1]);
-
-                double ux_dwzdx=u[i][j][k]*(Wz[i+1][j][k]-Wz[i-1][j][k])/(x[i+1]-x[i-1]);
-                double uy_dwzdy=v[i][j][k]*(Wz[i][j+1][k]-Wz[i][j+1][k])/(y[j+1]-y[j-1]);
-                double uz_dwzdz=w[i][j][k]*(Wz[i][j][k+1]-Wz[i][j][k-1])/(z[k+1]-z[k-1]);
-
-
-
-                tilt[i][j][k]+=Wz[i][j][k]*(wx_duzdx+wy_duzdy);
-                str[i][j][k]+=Wz[i][j][k]*(wz_duzdz);
-                adv[i][j][k]+=-Wz[i][j][k]*(ux_dwzdx+uy_dwzdy+uz_dwzdz);
-            }
-        }
-    }
-}
-
 
 void saveVTK(char *name,int num)
 {
@@ -884,22 +785,6 @@ void saveVTK(char *name,int num)
     vtkDoubleArray* velArray = vtkDoubleArray::New();
     velArray->SetNumberOfComponents(3);
     velArray->SetName("Velocity");
-    vtkDoubleArray* vortArray = vtkDoubleArray::New();
-    vortArray->SetNumberOfComponents(3);
-    vortArray->SetName("Vel_mean");
-    vtkDoubleArray* TArray = vtkDoubleArray::New();
-    TArray->SetNumberOfComponents(1);
-    TArray->SetName("T_mean");
-
-    vtkDoubleArray* tilt_a = vtkDoubleArray::New();
-    tilt_a->SetNumberOfComponents(1);
-    tilt_a->SetName("wz_tilt");
-    vtkDoubleArray* str_a = vtkDoubleArray::New();
-    str_a->SetNumberOfComponents(1);
-    str_a->SetName("wz_str");
-    vtkDoubleArray* adv_a = vtkDoubleArray::New();
-    adv_a->SetNumberOfComponents(1);
-    adv_a->SetName("wz_adv");
 
 
     for (int k = 0; k < dims[2]; k++)
@@ -910,26 +795,12 @@ void saveVTK(char *name,int num)
             {
                 nodes->InsertNextPoint(x[i], y[j], z[k]);
                 velArray->InsertNextTuple3(u[i][j][k], v[i][j][k], w[i][j][k]);
-                TArray->InsertNextTuple1(T[i][j][k]/num);
-
-                tilt_a->InsertNextTuple1(tilt[i][j][k]/num);
-                str_a->InsertNextTuple1(str[i][j][k]/num);
-                adv_a->InsertNextTuple1(adv[i][j][k]/num);
-
-
-                vortArray->InsertNextTuple3(um[i][j][k]/num, vm[i][j][k]/num, wm[i][j][k]/num);
             }
         }
     }
 
     structured_grid_new->SetPoints(nodes);
     structured_grid_new->GetPointData()->AddArray(velArray);
-    structured_grid_new->GetPointData()->AddArray(TArray);
-    structured_grid_new->GetPointData()->AddArray(tilt_a);
-    structured_grid_new->GetPointData()->AddArray(str_a);
-    structured_grid_new->GetPointData()->AddArray(adv_a);
-
-    structured_grid_new->GetPointData()->AddArray(vortArray);
 
 
 #if (VTK_MAJOR_VERSION >=6)
@@ -946,12 +817,6 @@ void saveVTK(char *name,int num)
     writer->Delete();
     nodes->Delete();
     velArray->Delete();
-    TArray->Delete();
-    tilt_a->Delete();
-    str_a->Delete();
-    adv_a->Delete();
-    vortArray->Delete();
-
 }
 
 int main(int argc, char** argv)
@@ -959,17 +824,17 @@ int main(int argc, char** argv)
     //srand(time(NULL));
 
     std::string  nameFile,nameForOpen,nameForSave;
-    std::string nameDir("/home/user/RFFI_Petya/ferroPlasma/vtk/");//("../");
+    std::string nameDir("/home/user/RFFI_Atmosphe/vtk/");//("../");
     DIR *mydir = opendir(nameDir.data());
     if(mydir == NULL) {
         perror("opendir");
         return -1;
     }
-    printf("start\n");
+    printf("stajkjkrt\n");
     struct dirent *entry;
     int fnum=0;
     int i=0;
-    while ((entry = readdir(mydir))&&(i<3))
+    while ((entry = readdir(mydir)))
     {
         i++;
         //entry = readdir(mydir);
@@ -979,16 +844,23 @@ int main(int argc, char** argv)
                 fnum++;
                 nameFile=entry->d_name;
                 nameForOpen = nameDir+ nameFile;
-                printf("%s \n",nameForOpen.data());
-                loadVTK( const_cast<char*>(nameForOpen.data()));
-                //   calcOmega_gen();
-                //                calcNewFields();
+                char * str = (char*)malloc(sizeof(char)*strlen((char*)(nameForOpen.data())));
 
-                //                nameForSave = "vtk/"+ nameFile.substr(0,nameFile.size()-4)+"_new.vtk";
-                //                saveVTK( const_cast<char*>(nameForSave.data()));
+                strcpy(str,(char*)(nameForOpen.data()));
+                fileNames.push_back(str);
+
             }
         }
-        //break;
+    }
+    readFileNum=0;
+
+    loadVTK(fileNames[readFileNum]);
+    readFileNum++;
+   stepGrid();
+
+    for (int i =0 ;i<fileNames.size();i++)
+    {
+        printf("namesssssssss= %s\n",fileNames[i]);
     }
     closedir(mydir);
     printf("end\n");
@@ -1003,11 +875,39 @@ int main(int argc, char** argv)
     glutKeyboardFunc(kb);
     init();
     glutMainLoop();
+    for (int i =0 ;i<fileNames.size();i++)
+    {
+       free(fileNames[i]);
+    }
+
     delete x;
     delete y;
     delete z;
+
+    for (int i=0;i<dims[0];i++)
+    {
+        for (int j=0;j<dims[1];j++)
+        {
+
+            delete u[i][j];
+            delete v[i][j];
+            delete w[i][j];
+            delete uPrev[i][j];
+            delete vPrev[i][j];
+            delete wPrev[i][j];
+        }
+
+        delete u[i];
+        delete v[i];
+        delete w[i];
+        delete uPrev[i] ;
+        delete vPrev[i] ;
+        delete wPrev[i] ;
+    }
     delete u;
     delete v;
     delete w;
-    delete T;
+    delete uPrev;
+    delete vPrev;
+    delete wPrev;
 }
